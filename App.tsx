@@ -538,7 +538,7 @@ const LessonView = () => {
     
     setIsTheoryLoading(true);
     try {
-      const content = await generateTheoryContent(topic);
+      const content = await generateTheoryContent(topic.title, topic.level);
       setTheoryContent(content);
       // Save to cache
       localStorage.setItem(cacheKey, content);
