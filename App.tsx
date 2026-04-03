@@ -1,5 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { marked } from 'marked';
+
+const md = (text: string): string => marked.parse(text) as string;
 import { HashRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Auth } from './components/Auth';
@@ -641,7 +644,7 @@ const LessonView = () => {
                       </button>
                     </div>
                   ) : (
-                    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: theoryContent }} />
+                    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: md(theoryContent) }} />
                   )}
                  </>
                )}
@@ -685,9 +688,7 @@ const LessonView = () => {
                    </button>
                  </div>
                  {aiExplanation && (
-                   <div className="mt-4 p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 text-sm leading-relaxed whitespace-pre-wrap text-gray-800 dark:text-gray-200">
-                     {aiExplanation}
-                   </div>
+                   <div className="mt-4 p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 text-sm leading-relaxed text-gray-800 dark:text-gray-200 markdown-body" dangerouslySetInnerHTML={{ __html: md(aiExplanation) }} />
                  )}
                </div>
              </div>
