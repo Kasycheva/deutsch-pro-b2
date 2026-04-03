@@ -1,0 +1,7 @@
+{
+  "name": "DeutschPro B2",
+  "description": "Мобильный помощник для подготовки к экзамену по немецкому языку (B2). Грамматика, лексика и тесты с поддержкой AI.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
