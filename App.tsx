@@ -3,6 +3,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { marked } from 'marked';
 
 const md = (text: string): string => marked.parse(text) as string;
+const renderRichContent = (text: string): string => {
+  const trimmed = text.trim();
+  return /^<\/?[a-z][\s\S]*>/i.test(trimmed) ? trimmed : md(text);
+};
 import { HashRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Auth } from './components/Auth';
@@ -644,7 +648,7 @@ const LessonView = () => {
                       </button>
                     </div>
                   ) : (
-                    <div className="markdown-body prose dark:prose-invert" dangerouslySetInnerHTML={{ __html: md(theoryContent) }} />
+                    <div className="markdown-body prose dark:prose-invert" dangerouslySetInnerHTML={{ __html: renderRichContent(theoryContent) }} />
                   )}
                  </>
                )}
