@@ -644,7 +644,7 @@ const LessonView = () => {
                       </button>
                     </div>
                   ) : (
-                    <div className="markdown-body" dangerouslySetInnerHTML={{ __html: md(theoryContent) }} />
+                    <div className="markdown-body prose dark:prose-invert" dangerouslySetInnerHTML={{ __html: md(theoryContent) }} />
                   )}
                  </>
                )}
