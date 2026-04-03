@@ -1,4 +1,3 @@
-import { GoogleGenAI, Modality } from "@google/genai";
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -14,6 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const { GoogleGenAI, Modality } = await import("@google/genai");
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -29,14 +29,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    
+
     if (!audioData) {
       throw new Error("No audio data returned from Gemini");
     }
 
-    // Convert PCM to WAV
     const pcmBuffer = Buffer.from(audioData, 'base64');
-    const wavHeader = createWavHeader(pcmBuffer.length, 24000); // Gemini TTS is 24kHz
+    const wavHeader = createWavHeader(pcmBuffer.length, 24000);
     const wavBase64 = Buffer.concat([wavHeader, pcmBuffer]).toString('base64');
 
     return res.status(200).json({ audioData: wavBase64 });
@@ -59,8 +58,8 @@ function createWavHeader(dataSize: number, sampleRate: number): Buffer {
   header.writeUInt32LE(chunkSize, 4);
   header.write('WAVE', 8);
   header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16); // subchunk1size
-  header.writeUInt16LE(1, 20); // audioformat (PCM)
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
   header.writeUInt16LE(numChannels, 22);
   header.writeUInt32LE(sampleRate, 24);
   header.writeUInt32LE(byteRate, 28);
