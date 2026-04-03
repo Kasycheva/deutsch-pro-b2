@@ -35,7 +35,7 @@ export const Quiz: React.FC<QuizProps> = ({ topic, onComplete }) => {
     setQuizFinished(false);
     setCurrentQ(0);
     setScore(0);
-    const qs = await generateQuiz(topic);
+    const qs = await generateQuiz(topic.title, topic.level);
     setQuestions(qs);
     setLoading(false);
   };
