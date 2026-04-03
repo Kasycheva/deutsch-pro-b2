@@ -35,7 +35,11 @@ export const Quiz: React.FC<QuizProps> = ({ topic, onComplete }) => {
     setQuizFinished(false);
     setCurrentQ(0);
     setScore(0);
-    const qs = await generateQuiz(topic.title, topic.level);
+    setSelectedOption(null);
+    setTextAnswer('');
+    setShowExplanation(false);
+    setIsCorrect(false);
+    const qs = await generateQuiz(topic.title, topic.level, topic.category);
     setQuestions(qs);
     setLoading(false);
   };
@@ -98,7 +102,7 @@ export const Quiz: React.FC<QuizProps> = ({ topic, onComplete }) => {
   }
 
   if (quizFinished) {
-    const percentage = Math.round((score / questions.length) * 100);
+    const percentage = questions.length ? Math.round((score / questions.length) * 100) : 0;
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
         <h3 className="text-2xl font-bold mb-4 dark:text-white">Тест завершен!</h3>
@@ -119,6 +123,24 @@ export const Quiz: React.FC<QuizProps> = ({ topic, onComplete }) => {
 
   const q = questions[currentQ];
   const isListening = topic.category === 'Listening';
+
+  if (!q) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
+        <h3 className="text-xl font-bold mb-3 dark:text-white">Не удалось собрать тест</h3>
+        <p className="text-gray-600 dark:text-gray-300 mb-6">
+          Попробуйте загрузить вопросы ещё раз. Если AI вернул неполные данные, мы запросим новый набор.
+        </p>
+        <button
+          onClick={loadQuiz}
+          className="inline-flex items-center px-6 py-3 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition"
+        >
+          <RefreshCw className="mr-2 h-5 w-5" />
+          Загрузить заново
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">

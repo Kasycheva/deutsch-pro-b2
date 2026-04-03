@@ -39,20 +39,217 @@ export const generateTheoryContent = async (topicTitle: string, level: string): 
   return generateGeminiContent(prompt, "You are an expert German language teacher for B2 level.");
 };
 
-export const generateQuiz = async (topicTitle: string, level: string): Promise<QuizQuestion[]> => {
-  const prompt = `Generate 5 quiz questions for the German B2 topic: "${topicTitle}". 
-  Include a mix of multiple-choice and true/false questions. 
-  Return ONLY a JSON array of objects with fields: question, options (array), correctAnswer (index), explanation (in Russian).`;
-  
-  const responseText = await generateGeminiContent(prompt, "You are a quiz generator. Output valid JSON only.");
-  try {
-    // Strip markdown code blocks if present
-    const cleanJson = responseText.replace(/```json\n?|```/g, '').trim();
-    return JSON.parse(cleanJson);
-  } catch (e) {
-    console.error("Failed to parse quiz JSON", e);
-    return [];
+const stripCodeFences = (text: string): string => text.replace(/```json\s*|```\s*/gi, '').trim();
+
+const extractJsonArray = (text: string): string => {
+  const clean = stripCodeFences(text);
+  const start = clean.indexOf('[');
+  const end = clean.lastIndexOf(']');
+
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('No JSON array found in AI response.');
   }
+
+  return clean.slice(start, end + 1);
+};
+
+const parseBooleanLike = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', 'wahr', 'верно', 'правда'].includes(normalized)) return true;
+    if (['false', 'falsch', 'неверно', 'ложь'].includes(normalized)) return false;
+  }
+  return null;
+};
+
+const buildFallbackOptions = (raw: any): string[] => {
+  const candidateKeys = ['incorrectAnswers', 'distractors', 'wrongAnswers', 'variants'];
+  const wrongAnswers = candidateKeys
+    .map((key) => raw?.[key])
+    .find(Array.isArray) as unknown[] | undefined;
+
+  const correctText = String(
+    raw?.correctAnswerText ??
+    raw?.correctAnswer ??
+    raw?.answer ??
+    raw?.correctOption ??
+    ''
+  ).trim();
+
+  const cleanedWrongAnswers = (wrongAnswers ?? [])
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+
+  const options = [correctText, ...cleanedWrongAnswers]
+    .filter(Boolean)
+    .filter((value, index, array) => array.indexOf(value) === index);
+
+  return options.slice(0, 4);
+};
+
+const normalizeQuizQuestion = (raw: any): QuizQuestion | null => {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const question = String(raw.question ?? raw.prompt ?? '').trim();
+  const explanation = String(raw.explanation ?? raw.reason ?? 'Проверьте правило и попробуйте ещё раз.').trim();
+  const context = typeof raw.context === 'string' ? raw.context.trim() : undefined;
+  const providedType = String(raw.type ?? raw.kind ?? '').trim().toLowerCase();
+
+  if (!question) return null;
+
+  let options = Array.isArray(raw.options)
+    ? raw.options.map((option: unknown) => String(option).trim()).filter(Boolean)
+    : [];
+
+  const booleanAnswer = parseBooleanLike(raw.correctAnswer ?? raw.answer);
+  if (booleanAnswer !== null && options.length === 0) {
+    options = ['Верно', 'Неверно'];
+  }
+
+  if (options.length === 0) {
+    options = buildFallbackOptions(raw);
+  }
+
+  if (providedType === 'fill-gap' || providedType === 'fill_in_the_blank') {
+    const correctAnswerText = String(raw.correctAnswerText ?? raw.correctAnswer ?? raw.answer ?? '').trim();
+    if (!correctAnswerText) return null;
+
+    return {
+      type: 'fill-gap',
+      question,
+      options: [],
+      correctIndex: -1,
+      correctAnswerText,
+      explanation,
+      context,
+    };
+  }
+
+  if (options.length >= 2) {
+    let correctIndex = Number.isInteger(raw.correctIndex) ? raw.correctIndex : -1;
+
+    if (correctIndex < 0 && typeof raw.correctAnswer === 'number') {
+      correctIndex = raw.correctAnswer;
+    }
+
+    if (correctIndex < 0) {
+      const correctText = String(raw.correctAnswerText ?? raw.correctAnswer ?? raw.answer ?? raw.correctOption ?? '').trim();
+      if (correctText) {
+        const foundIndex = options.findIndex((option) => option.toLowerCase() === correctText.toLowerCase());
+        if (foundIndex >= 0) {
+          correctIndex = foundIndex;
+        }
+      }
+    }
+
+    if (booleanAnswer !== null) {
+      correctIndex = booleanAnswer ? 0 : 1;
+    }
+
+    if (correctIndex < 0 || correctIndex >= options.length) {
+      correctIndex = 0;
+    }
+
+    const isTrueFalse =
+      providedType === 'true-false' ||
+      options.length === 2 && options.every((option) => ['верно', 'неверно', 'true', 'false', 'wahr', 'falsch'].includes(option.toLowerCase()));
+
+    return {
+      type: isTrueFalse ? 'true-false' : 'multiple-choice',
+      question,
+      options,
+      correctIndex,
+      explanation,
+      context,
+    };
+  }
+
+  const fallbackAnswer = String(raw.correctAnswerText ?? raw.correctAnswer ?? raw.answer ?? '').trim();
+  if (!fallbackAnswer) return null;
+
+  return {
+    type: 'fill-gap',
+    question,
+    options: [],
+    correctIndex: -1,
+    correctAnswerText: fallbackAnswer,
+    explanation,
+    context,
+  };
+};
+
+const normalizeQuizQuestions = (payload: unknown): QuizQuestion[] => {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .map(normalizeQuizQuestion)
+    .filter((question): question is QuizQuestion => Boolean(question));
+};
+
+export const generateQuiz = async (topicTitle: string, level: string, category?: string): Promise<QuizQuestion[]> => {
+  const prompt = `Create exactly 5 German ${level} quiz questions for the topic "${topicTitle}"${category ? ` in the category "${category}"` : ''}.
+Return ONLY a JSON array.
+Each item must use this schema:
+{
+  "type": "multiple-choice" | "true-false" | "fill-gap",
+  "question": "question text",
+  "options": ["option 1", "option 2", "option 3", "option 4"],
+  "correctIndex": 0,
+  "correctAnswerText": "only for fill-gap",
+  "explanation": "short explanation in Russian",
+  "context": "optional short transcript or reading passage"
+}
+Rules:
+- multiple-choice questions must always have 4 options;
+- true-false questions must always have 2 options;
+- fill-gap questions must have an empty options array and a non-empty correctAnswerText;
+- do not wrap JSON in markdown fences.`;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const responseText = await generateGeminiContent(prompt, "You are a quiz generator. Output valid JSON only.");
+      const parsed = JSON.parse(extractJsonArray(responseText));
+      const normalized = normalizeQuizQuestions(parsed);
+
+      const validQuestions = normalized.filter((question) => {
+        if (question.type === 'fill-gap') {
+          return Boolean(question.correctAnswerText);
+        }
+        return question.options.length >= 2;
+      });
+
+      if (validQuestions.length >= 3) {
+        return validQuestions.slice(0, 5);
+      }
+    } catch (error) {
+      console.error(`Failed to build quiz on attempt ${attempt + 1}`, error);
+    }
+  }
+
+  return [
+    {
+      type: 'multiple-choice',
+      question: `Что чаще всего используется в теме "${topicTitle}"?`,
+      options: ['Контекст и ключевые слова', 'Случайный порядок слов', 'Только перевод дословно', 'Игнорирование грамматики'],
+      correctIndex: 0,
+      explanation: 'Для заданий уровня B2 важно опираться на контекст, структуру и грамматические сигналы.',
+    },
+    {
+      type: 'true-false',
+      question: 'На уровне B2 нужно обращать внимание на оттенки смысла и формулировки.',
+      options: ['Верно', 'Неверно'],
+      correctIndex: 0,
+      explanation: 'Да, на B2 проверяется не только базовое понимание, но и точность интерпретации.',
+    },
+    {
+      type: 'fill-gap',
+      question: 'Im Deutschen steht das Verb im Nebensatz meistens am ___.',
+      options: [],
+      correctIndex: -1,
+      correctAnswerText: 'Ende',
+      explanation: 'В придаточном предложении немецкий глагол обычно стоит в конце.',
+    },
+  ];
 };
 
 export const explainGrammar = async (sentence: string): Promise<string> => {
@@ -85,47 +282,56 @@ export const checkSentence = async (sentence: string): Promise<{ corrected: stri
 let audioContext: AudioContext | null = null;
 
 export const playPronunciation = async (text: string): Promise<void> => {
+  const speakWithBrowser = async (): Promise<void> => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    await new Promise<void>((resolve) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'de-DE';
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    });
+  };
+
   try {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
     // 1. Try Gemini TTS via Serverless Function
     const response = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({ text }),
     });
+    window.clearTimeout(timeoutId);
 
     if (response.ok) {
       const { audioData } = await response.json();
       if (audioData) {
         if (!audioContext) audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         if (audioContext.state === 'suspended') await audioContext.resume();
-        
-        const binaryString = window.atob(audioData);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        
-        const audioBuffer = await audioContext.decodeAudioData(bytes.buffer);
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        source.start(0);
+
+        await new Promise<void>((resolve, reject) => {
+          const audio = new Audio(`data:audio/wav;base64,${audioData}`);
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error('Failed to play returned audio.'));
+          audio.play().catch(reject);
+        });
         return;
       }
     }
     
     // 2. Fallback to Browser TTS
     console.warn("Gemini TTS failed or returned no data, using browser fallback.");
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'de-DE';
-    window.speechSynthesis.speak(utterance);
+    await speakWithBrowser();
     
   } catch (error) {
     console.error("Pronunciation error:", error);
     // Final fallback
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'de-DE';
-    window.speechSynthesis.speak(utterance);
+    await speakWithBrowser();
   }
 };
 

@@ -650,10 +650,12 @@ const LessonView = () => {
                )}
 
                {topic.category === 'Listening' && (
-                 <div className="flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-700/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-600 mt-4">
+                 <div className="flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-700/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-600 mt-4 text-center">
                     <Headphones size={40} className="text-brand-400 mb-2" />
-                    <p className="font-medium">Аудио-материал загружается...</p>
-                    <p className="text-xs text-gray-500">Нажмите "Практика", чтобы начать упражнения.</p>
+                    <p className="font-medium">Аудио доступно в блоке практики</p>
+                    <p className="text-xs text-gray-500 max-w-md">
+                      Откройте вкладку "Практика" и нажмите на кнопку со значком звука у вопроса. Если серверный TTS ответит слишком медленно, приложение автоматически переключится на голос браузера.
+                    </p>
                  </div>
                )}
              </div>
